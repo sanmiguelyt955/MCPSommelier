@@ -40,7 +40,7 @@ python3 mcpsommelier.py --verdict io.github.owner/server good "worked great"
 
 ## Blockers and plan B
 `--where cloud` sets aside local-only connectors; `--blockers local key middleman` sets aside others. Paid ones always go to their own section.
-Blocked connectors are never deleted: they go to their own list with a legitimate plan B (free tier, hosted alternative, the vendor's official connector...). It never suggests ways around a service's rules.
+Blocked connectors are never deleted: they go to their own list with a legitimate plan B (free tier, hosted alternative, the vendor's official connector...). It never suggests ways around a service's rules: connectors made to evade site protections (stealth, anti-bot, captcha solving, rotating proxies) are always set aside.
 
 ## Setup
 Python 3.9+ (standard library only) and `gh` logged in (GitHub search). Optional: `GEMINI_API_KEY` (free from Google AI Studio).

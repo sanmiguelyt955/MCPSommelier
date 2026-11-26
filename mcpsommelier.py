@@ -53,7 +53,12 @@ SYN = {"correo": ["gmail", "email"], "email": ["gmail", "email"], "video": ["vid
        "voz": ["voice", "tts"], "voice": ["voice", "tts"], "calendario": ["calendar"], "calendar": ["calendar"],
        "archivos": ["drive", "files"], "files": ["drive", "files"], "notas": ["notes", "obsidian", "notion"], "notes": ["notes", "notion"],
        "redes": ["social", "tiktok", "instagram"], "social": ["social", "tiktok", "instagram"], "web": ["web", "scrape"],
+       "scraping": ["scrape", "crawl", "scraper"], "scrape": ["scrape", "crawl"], "noticias": ["news"], "news": ["news"],
+       "reddit": ["reddit"], "twitter": ["twitter", "x"], "buscar": ["search"], "search": ["search"],
        "musica": ["music"], "music": ["music"], "pagos": ["payments", "stripe"], "payments": ["payments", "stripe"]}
+# Made to get past a site's protections: always set aside (never recommended), whatever the user's blockers.
+BYPASS_WORDS = ("stealth", "anti-bot", "antibot", "bypass cloudflare", "bypass captcha", "captcha solv", "solve captcha",
+                "waf bypass", "bypass waf", "undetect", "rotating proxies", "residential proxies", "evade detection", "cookies-from-browser")
 COST_WORDS = ("$", "per call", "credits", "x402", "paid", "subscription", "usdc", "pricing", "billing")
 L = {
  "en": dict(title="Best connectors for", tiers=("Use now", "Add it", "Look later"), have="✅ you already have it",
@@ -233,7 +238,9 @@ def official_vendor(name, repo):
 
 def relevance(text, terms):
     t = set(words(text))
-    return sum(1 for x in terms if x in t or any(x in w for w in t)) / max(1, len(terms))
+    stem = lambda w: w[:5] if len(w) >= 5 else w  # noqa: E731   (scraping ~ scrape ~ scraper)
+    st = {stem(w) for w in t}
+    return sum(1 for x in terms if x in t or stem(x) in st or any(x in w for w in t)) / max(1, len(terms))
 
 
 def main():
@@ -336,6 +343,8 @@ def main():
             continue                                               # no judge today: relevance alone decides what fits
         uses = [b for b, on in (("local", c["kind"].startswith("local")), ("key", c["needs_key"]),
                                 ("middleman", c["middleman"])) if on and b in blockers]
+        if any(w in c["text"].lower() for w in BYPASS_WORDS) and not c["have"]:
+            uses.append("bypass")
         if uses and not c["have"]:
             bp = (35 * rel + 20 * ((float(j["score"]) / 10) if j else rel) + 10 * trust + 10 * setup + 10 * fresh)
             blocked.append({**{k: c[k] for k in ("name", "title", "url")}, "uses": sorted(set(uses)), "score": max(0, min(100, round(bp)))}); continue
@@ -381,20 +390,24 @@ def main():
     HOW = {"en": {"paid": "look for the vendor's free tier or a free local alternative",
                   "local": "run it on your own computer, or pick a hosted connector for the same service",
                   "key": "create the key in the service and connect it in your app's connector settings (never paste it in a chat)",
-                  "middleman": "prefer the vendor's official connector over a third-party host"},
+                  "middleman": "prefer the vendor's official connector over a third-party host",
+                  "bypass": "not recommended: it is made to get past sites' protections; use official APIs or the site's allowed data"},
            "es": {"paid": "busca la capa gratis del servicio o una alternativa local gratis",
                   "local": "córrelo en tu computadora, o elige un conector alojado para el mismo servicio",
                   "key": "crea la clave en el servicio y conéctala en los ajustes de conectores de tu app (nunca la pegues en un chat)",
-                  "middleman": "prefiere el conector oficial del servicio en vez de uno alojado por terceros"},
+                  "middleman": "prefiere el conector oficial del servicio en vez de uno alojado por terceros",
+                  "bypass": "no recomendado: está hecho para saltarse las protecciones de los sitios; usa APIs oficiales o los datos que el sitio permite"},
            "pt": {"paid": "procure o plano grátis do serviço ou uma alternativa local grátis",
                   "local": "rode no seu computador, ou escolha um conector hospedado para o mesmo serviço",
                   "key": "crie a chave no serviço e conecte nas configurações de conectores do seu app (nunca cole em um chat)",
-                  "middleman": "prefira o conector oficial do serviço em vez de um hospedado por terceiros"}}
+                  "middleman": "prefira o conector oficial do serviço em vez de um hospedado por terceiros",
+                  "bypass": "não recomendado: feito para burlar as proteções dos sites; use APIs oficiais"}}
     plan_b = []
     task_kw = [w for k in keywords for w in words(k) if len(w) >= 4]
     for b in sorted(blocked, key=lambda x: -x["score"])[:5]:
         kw = [w for w in words(b["title"]) if w not in ("mcp", "server", "agent", "claude")][:2]
-        plan_b.append({"name": b["name"], "how": HOW.get(lang, HOW["en"]).get(b["uses"][0], "-"),
+        first = "bypass" if "bypass" in b["uses"] else b["uses"][0]
+        plan_b.append({"name": b["name"], "how": HOW.get(lang, HOW["en"]).get(first, "-"),
                        "substitutes": substitute_repos([" ".join(kw)], exclude=(b["name"],), n=2, must=task_kw) if kw else []})
     index["searches"].append({"date": f"{datetime.now():%Y-%m-%d %H:%M}", "need": a.need, "tasks": [t["task"] for t in tasks],
                               "top": [r["name"] for r in rows[:5]], "picks": picks})
