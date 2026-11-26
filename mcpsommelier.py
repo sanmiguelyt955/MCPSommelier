@@ -273,9 +273,12 @@ def main():
                         "when they fit). Say which job it covers. Write reasons in the language with ISO code '" + lang + "'. Return JSON "
                         "{\"connectors\": [{\"name\": exact name, \"score\": 0-10, \"job\": the job it covers or \"\", \"reason\": one short sentence}]}.\n"
                         + "\n".join(f"- {c['name']}{' (HAVE)' if c['have'] else ''}: {c['text'][:200]}" for c in pre))
+        names = {c["name"].lower(): c["name"] for c in pre}
         for x in (g or {}).get("connectors", []):
             if isinstance(x, dict) and x.get("name"):
-                judge[x["name"]] = x
+                key = re.sub(r"\s*\(have\)\s*$", "", x["name"].strip(), flags=re.I).lower()
+                if key in names:
+                    judge[names[key]] = x
 
     rows, blocked = [], []
     for c in pre:
@@ -313,10 +316,19 @@ def main():
     picks = {"best": rows[0]["name"] if rows else None,
              "best_you_have": next((r["name"] for r in rows if r["have"]), None),
              "best_new_free": next((r["name"] for r in rows if not r["have"] and "💳 cost" not in r["warnings"]), None)}
-    plan_b = [{"name": b["name"], "how": {"paid": "look for the vendor's free tier or a free local alternative",
-                                          "local": "run it on your own computer, or pick a hosted connector for the same service",
-                                          "key": "create the key in the service and connect it in your app's connector settings (never paste it in a chat)",
-                                          "middleman": "prefer the vendor's official connector over a third-party host"}.get(b["uses"][0], "-")} for b in blocked[:6]]
+    HOW = {"en": {"paid": "look for the vendor's free tier or a free local alternative",
+                  "local": "run it on your own computer, or pick a hosted connector for the same service",
+                  "key": "create the key in the service and connect it in your app's connector settings (never paste it in a chat)",
+                  "middleman": "prefer the vendor's official connector over a third-party host"},
+           "es": {"paid": "busca la capa gratis del servicio o una alternativa local gratis",
+                  "local": "córrelo en tu computadora, o elige un conector alojado para el mismo servicio",
+                  "key": "crea la clave en el servicio y conéctala en los ajustes de conectores de tu app (nunca la pegues en un chat)",
+                  "middleman": "prefiere el conector oficial del servicio en vez de uno alojado por terceros"},
+           "pt": {"paid": "procure o plano grátis do serviço ou uma alternativa local grátis",
+                  "local": "rode no seu computador, ou escolha um conector hospedado para o mesmo serviço",
+                  "key": "crie a chave no serviço e conecte nas configurações de conectores do seu app (nunca cole em um chat)",
+                  "middleman": "prefira o conector oficial do serviço em vez de um hospedado por terceiros"}}
+    plan_b = [{"name": b["name"], "how": HOW.get(lang, HOW["en"]).get(b["uses"][0], "-")} for b in blocked[:6]]
     index["searches"].append({"date": f"{datetime.now():%Y-%m-%d %H:%M}", "need": a.need, "tasks": [t["task"] for t in tasks],
                               "top": [r["name"] for r in rows[:5]], "picks": picks})
     INDEX.write_text(json.dumps(index, ensure_ascii=False, indent=1))
