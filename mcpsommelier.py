@@ -18,7 +18,10 @@ How it works
     ($ per call, credits, x402 crypto payments), official vendor or community, stars, last update.
  5. JUDGE (optional, Gemini): rates 0-10 how well each fits YOUR need and profile, with a reason in your language,
     and says which task of the need each connector covers.
- 6. SCORES 0-100 = relevance 35 + judge 20 + already-have 15 + trust 10 + setup 10 + freshness 5 + free 5 + verdicts.
+ 6. SCORES 0-100 = relevance 35 + judge 20 + already-have 15 + trust 10 + setup 10 + freshness 5 + free 5 + verdicts;
+    paid ones lose 10 points and go to their own section (they work, but cost money).
+ 6b. For each job with no connector, and for blocked connectors, it looks for SUBSTITUTES: GitHub repos that do the
+    same job (a library, CLI or app the agent can run). Legitimate substitutes only.
  7. RETURNS the ranking, tiers (Use now / Add it / Look later), warnings, blocked ones with a legitimate plan B,
     and coverage: which parts of your need are covered and which still have no connector.
 Read-only: it never installs, connects or authorizes anything. Never paste keys into a chat; connect them in your app.
@@ -55,15 +58,21 @@ L = {
  "en": dict(title="Best connectors for", tiers=("Use now", "Add it", "Look later"), have="✅ you already have it",
             cols="| # | Connector | Score | Tier | Kind | Setup | What it does | Judge | Warnings |", cand="candidates",
             cov="Coverage of your need", nocov="no connector found yet", blocked="⛔ Not usable where you are TODAY",
-            planb="🔁 Plan B (allowed ways only)", best="Best", besthave="Best one you already have", bestnew="Best new free one"),
+            planb="🔁 Plan B (allowed ways only)", best="Best", besthave="Best one you already have", bestnew="Best new free one",
+            paid="💳 Paid (they work, but cost money: -10 points)", subs="🧩 Substitutes for what has no connector (repos that do the same job)",
+            sub_for="substitute repo for"),
  "es": dict(title="Mejores conectores para", tiers=("Usar ya", "Agregarlo", "Ver después"), have="✅ ya lo tienes",
             cols="| # | Conector | Puntos | Nivel | Tipo | Instalación | Qué hace | Juez | Avisos |", cand="candidatos",
             cov="Qué partes de tu necesidad quedan cubiertas", nocov="todavía sin conector", blocked="⛔ No sirven donde estás HOY",
-            planb="🔁 Plan B (solo caminos permitidos)", best="El mejor", besthave="El mejor que ya tienes", bestnew="El mejor nuevo y gratis"),
+            planb="🔁 Plan B (solo caminos permitidos)", best="El mejor", besthave="El mejor que ya tienes", bestnew="El mejor nuevo y gratis",
+            paid="💳 De paga (funcionan, pero cuestan dinero: -10 puntos)", subs="🧩 Sustitutos para lo que no tiene conector (repos que hacen lo mismo)",
+            sub_for="repo sustituto para"),
  "pt": dict(title="Melhores conectores para", tiers=("Usar já", "Adicionar", "Ver depois"), have="✅ você já tem",
             cols="| # | Conector | Pontos | Nível | Tipo | Instalação | O que faz | Juiz | Avisos |", cand="candidatos",
             cov="Cobertura da sua necessidade", nocov="ainda sem conector", blocked="⛔ Não servem onde você está HOJE",
-            planb="🔁 Plano B (só caminhos permitidos)", best="O melhor", besthave="O melhor que você já tem", bestnew="O melhor novo e grátis"),
+            planb="🔁 Plano B (só caminhos permitidos)", best="O melhor", besthave="O melhor que você já tem", bestnew="O melhor novo e grátis",
+            paid="💳 Pagos (funcionam, mas custam dinheiro: -10 pontos)", subs="🧩 Substitutos para o que não tem conector (repos que fazem o mesmo)",
+            sub_for="repo substituto para"),
 }
 
 
@@ -157,6 +166,27 @@ def github_mcp_search(keyword):
     return json.loads(r.stdout).get("items", []) if r.returncode == 0 else []
 
 
+def substitute_repos(keywords, exclude=(), n=3):
+    """GitHub repos that do the same JOB without being a connector (a library, CLI or app the agent can run).
+    Legitimate substitutes only: never tools made to get around a service's rules."""
+    seen, out = set(exclude), []
+    for k in keywords[:3]:
+        r = subprocess.run(["gh", "api", "-X", "GET", "search/repositories", "-f", f"q={k} in:name,description,topics stars:>20",
+                            "-f", "sort=stars", "-f", "per_page=10"], capture_output=True, text=True, timeout=60)
+        for x in (json.loads(r.stdout).get("items", []) if r.returncode == 0 else []):
+            n_ = x["full_name"]
+            if n_ in seen or x.get("archived") or x.get("fork") or "awesome" in n_.lower() or days_since(x["pushed_at"]) > 540:
+                continue
+            seen.add(n_)
+            lic = ((x.get("license") or {}).get("spdx_id") or "none").lower()
+            out.append({"repo": n_, "url": x["html_url"], "stars": x["stargazers_count"], "license": lic,
+                        "description": (x.get("description") or "")[:120]})
+        time.sleep(1.0)
+        if len(out) >= n:
+            break
+    return sorted(out, key=lambda x: -x["stars"])[:n]
+
+
 def days_since(iso):
     try:
         return (datetime.now(timezone.utc) - datetime.fromisoformat(iso.replace("Z", "+00:00"))).days
@@ -198,7 +228,7 @@ def main():
     ap.add_argument("--inventory", default=str(DATA / "inventory.json"), help="connectors you already have (see inventory.example.json)")
     ap.add_argument("--profile", default=str(DATA / "profile.json"))
     ap.add_argument("--where", help="cloud | laptop: hides local-only connectors in the cloud, etc.")
-    ap.add_argument("--free", action="store_true", help="only connectors with no sign of cost")
+    ap.add_argument("--free", action="store_true", help="kept for compatibility: paid connectors always go to their own section (-10 points)")
     ap.add_argument("--blockers", nargs="+", default=[], help="paid, local, key, middleman (or your own words)")
     ap.add_argument("--top", type=int, default=12)
     ap.add_argument("--lang")
@@ -286,14 +316,12 @@ def main():
         j = judge.get(c["name"])
         if j and float(j.get("score", 0)) <= 1 and not c["have"]:
             continue                                               # the judge says it has nothing to do with the need
-        uses = [b for b, on in (("paid", c["cost"]), ("local", c["kind"].startswith("local")), ("key", c["needs_key"]),
+        uses = [b for b, on in (("local", c["kind"].startswith("local")), ("key", c["needs_key"]),
                                 ("middleman", c["middleman"])) if on and b in blockers]
-        if a.free and c["cost"]:
-            uses.append("paid")
         if uses and not c["have"]:
             blocked.append({**{k: c[k] for k in ("name", "title", "url")}, "uses": sorted(set(uses))}); continue
         pts = (35 * rel + 20 * ((float(j["score"]) / 10) if j else rel) + (15 if c["have"] else 0) + 10 * trust + 10 * setup
-               + 5 * fresh + (0 if c["cost"] else 5) + index["verdicts"].get(c["name"], {}).get("shift", 0))
+               + 5 * fresh + (-10 if c["cost"] else 5) + index["verdicts"].get(c["name"], {}).get("shift", 0))
         pts = max(0, min(100, round(pts)))
         w = []
         if c["have"]: w.append(T["have"])
@@ -305,14 +333,23 @@ def main():
         rows.append({"name": c["name"], "title": c["title"], "url": c["url"], "score": pts, "have": c["have"],
                      "tier": T["tiers"][0] if (c["have"] and pts >= 50) or pts >= 70 else T["tiers"][1] if pts >= 50 else T["tiers"][2],
                      "kind": c["kind"], "setup": "0" if c["have"] else ("key" if c["needs_key"] else "easy" if c["kind"] == "hosted" else "install"),
-                     "what": re.sub(r"\s+", " ", c["text"])[:140], "judge": j, "warnings": w, "source": c["source"]})
-    rows.sort(key=lambda x: -x["score"]); rows = rows[:a.top]
+                     "what": re.sub(r"\s+", " ", c["text"])[:140], "judge": j, "warnings": w, "source": c["source"], "paid": c["cost"]})
+    rows.sort(key=lambda x: -x["score"])
+    paid_rows = [r for r in rows if r["paid"]][:a.top]
+    rows = [r for r in rows if not r["paid"]][:a.top]
     covered = {}
-    for r in rows:
+    for r in rows + paid_rows:
         job = (r["judge"] or {}).get("job")
-        if job: covered.setdefault(job, []).append(r["title"])
+        if job and float((r["judge"] or {}).get("score", 0)) >= 6:      # only a real fit covers a job
+            covered.setdefault(job, []).append(r["title"])
     coverage = [{"task": t["task"], "by": next((v for k, v in covered.items() if k and (k.lower() in t["task"].lower() or t["task"].lower() in k.lower())), [])}
                 for t in tasks]
+    subs = []
+    for c, t in zip(coverage, tasks):
+        if not c["by"]:
+            found = substitute_repos(t.get("keywords", []) or words(t["task"]))
+            subs.append({"task": t["task"], "repos": found})
+            c["substitutes"] = [x["repo"] for x in found]
     picks = {"best": rows[0]["name"] if rows else None,
              "best_you_have": next((r["name"] for r in rows if r["have"]), None),
              "best_new_free": next((r["name"] for r in rows if not r["have"] and "💳 cost" not in r["warnings"]), None)}
@@ -328,13 +365,18 @@ def main():
                   "local": "rode no seu computador, ou escolha um conector hospedado para o mesmo serviço",
                   "key": "crie a chave no serviço e conecte nas configurações de conectores do seu app (nunca cole em um chat)",
                   "middleman": "prefira o conector oficial do serviço em vez de um hospedado por terceiros"}}
-    plan_b = [{"name": b["name"], "how": HOW.get(lang, HOW["en"]).get(b["uses"][0], "-")} for b in blocked[:6]]
+    plan_b = []
+    for b in blocked[:6]:
+        kw = [w for w in words(b["title"]) if w not in ("mcp", "server")][:2]
+        plan_b.append({"name": b["name"], "how": HOW.get(lang, HOW["en"]).get(b["uses"][0], "-"),
+                       "substitutes": substitute_repos([" ".join(kw)] if kw else [], n=2) if kw else []})
     index["searches"].append({"date": f"{datetime.now():%Y-%m-%d %H:%M}", "need": a.need, "tasks": [t["task"] for t in tasks],
                               "top": [r["name"] for r in rows[:5]], "picks": picks})
     INDEX.write_text(json.dumps(index, ensure_ascii=False, indent=1))
     if a.json:
         print(json.dumps({"need": a.need, "lang": lang, "tasks": tasks, "candidates": len(cands), "picks": picks, "coverage": coverage,
-                          "ranking": rows, "blocked_today": blocked, "plan_b": plan_b}, ensure_ascii=False, indent=1)); return
+                          "ranking": rows, "paid": paid_rows, "substitutes": subs,
+                          "blocked_today": blocked, "plan_b": plan_b}, ensure_ascii=False, indent=1)); return
     out = [f"# {T['title']}: {a.need}", f"{len(cands)} {T['cand']} · {datetime.now():%Y-%m-%d}", "",
            f"**{T['best']}:** {picks['best'] or '—'} · **{T['besthave']}:** {picks['best_you_have'] or '—'} · **{T['bestnew']}:** {picks['best_new_free'] or '—'}", "",
            T["cols"], "|---|---|---|---|---|---|---|---|---|"]
@@ -343,10 +385,24 @@ def main():
         name = f"[{r['title']}]({r['url']})" if r["url"] else f"**{r['title']}**"
         out.append(f"| {i} | {name} | {r['score']} | {r['tier']} | {r['kind']} | {r['setup']} | "
                    f"{r['what'].replace('|', '/')} | {jj.replace('|', '/')} | {' '.join(r['warnings'])} |")
-    out += ["", f"## {T['cov']}"] + [f"- **{c['task']}** → {', '.join(c['by']) if c['by'] else T['nocov']}" for c in coverage]
+    if paid_rows:
+        out += ["", f"## {T['paid']}", T["cols"], "|---|---|---|---|---|---|---|---|---|"]
+        for i, r in enumerate(paid_rows, 1):
+            name = f"[{r['title']}]({r['url']})" if r["url"] else f"**{r['title']}**"
+            jj = f"{float(r['judge']['score']):.0f}/10 {r['judge'].get('reason', '')}" if r["judge"] else ""
+            out.append(f"| {i} | {name} | {r['score']} | {r['tier']} | {r['kind']} | {r['setup']} | "
+                       f"{r['what'].replace('|', '/')} | {jj.replace('|', '/')} | {' '.join(r['warnings'])} |")
+    out += ["", f"## {T['cov']}"] + [f"- **{c['task']}** → {', '.join(c['by']) if c['by'] else T['nocov'] + (' · 🧩 ' + ', '.join(c.get('substitutes', [])) if c.get('substitutes') else '')}" for c in coverage]
+    if subs:
+        out += ["", f"## {T['subs']}"]
+        for sb in subs:
+            out += [f"- **{sb['task']}** → [{x['repo']}]({x['url']}) ({x['stars']}⭐, {x['license']}) — {x['description'].replace('|', '/')}" for x in sb["repos"]] or [f"- **{sb['task']}** → —"]
     if blocked:
         out += ["", f"## {T['blocked']}"] + [f"- [{b['title']}]({b['url']}) — {', '.join(b['uses'])}" if b["url"] else f"- {b['title']} — {', '.join(b['uses'])}" for b in blocked]
-        out += ["", f"## {T['planb']}"] + [f"- **{p['name']}**: {p['how']}" for p in plan_b]
+        out += ["", f"## {T['planb']}"]
+        for pb in plan_b:
+            alt = "; ".join(f"[{x['repo']}]({x['url']}) ({x['stars']}⭐)" for x in pb["substitutes"])
+            out.append(f"- **{pb['name']}**: {pb['how']}" + (f" · 🧩 {T['sub_for']}: {alt}" if alt else ""))
     text = "\n".join(out)
     if a.md: Path(a.md).write_text(text + "\n", encoding="utf-8")
     print(text)

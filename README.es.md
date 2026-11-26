@@ -18,4 +18,9 @@ python3 mcpsommelier.py "mandar facturas por correo" --free
 6. Te dice **qué partes de tu necesidad quedan cubiertas** y cuáles todavía no tienen conector.
 7. Los que no sirven donde estás salen aparte, con un **plan B legítimo**.
 
+## De paga y sustitutos
+- **Los de paga no se esconden:** salen en su propia sección, «💳 De paga (funcionan, pero cuestan dinero)», con 10 puntos menos.
+- Una tarea solo cuenta como cubierta si el juez le da 6/10 o más a un conector para esa tarea.
+- **Sustitutos:** para cada tarea sin conector (y para los apartados), busca **repos de GitHub que hagan lo mismo** (una librería, programa o app que el agente pueda correr). Solo sustitutos legítimos: revisa la licencia y las reglas del servicio.
+
 **Seguridad:** solo lee. Nunca instala, conecta ni autoriza nada. Las claves se conectan en tu app, nunca en un chat.

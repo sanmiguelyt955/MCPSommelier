@@ -31,8 +31,15 @@ python3 mcpsommelier.py --verdict io.github.owner/server good "worked great"
 6. **Scores** 0-100 = relevance 35 + judge 20 + already-have 15 + trust 10 + setup 10 + freshness 5 + free 5 + your verdicts.
 7. **Returns** tiers (**Use now** · **Add it** · **Look later**), warnings (✅ you have it, 💳 cost, 🔑 key/login, ↪ third-party host, 🏢 official vendor), coverage of your need, and blocked ones with a plan B.
 
+## Paid connectors and substitutes
+- **Paid ones are not hidden**: they go to their own section, *"💳 Paid (they work, but cost money)"*, and lose 10 points.
+- **Coverage**: a job counts as covered only when the judge rates a connector 6/10 or more for it.
+- **Substitutes**: for every job with no connector (and for blocked connectors), it looks for **GitHub repos that do the
+  same job** — a library, CLI or app the agent can run. Legitimate substitutes only; check each one's license and the
+  service's terms (for example, some unofficial chat libraries break the service's rules: prefer official APIs).
+
 ## Blockers and plan B
-`--where cloud` hides local-only connectors; `--free` hides paid ones; `--blockers paid local key middleman`.
+`--where cloud` sets aside local-only connectors; `--blockers local key middleman` sets aside others. Paid ones always go to their own section.
 Blocked connectors are never deleted: they go to their own list with a legitimate plan B (free tier, hosted alternative, the vendor's official connector...). It never suggests ways around a service's rules.
 
 ## Setup
