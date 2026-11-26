@@ -382,7 +382,7 @@ def main():
             covered.setdefault(job, []).append(r["title"])
     if not judge and len(tasks) == 1:
         covered.setdefault(tasks[0]["task"], []).extend(r["title"] for r in rows + paid_rows
-                                                       if relevance(r["what"], terms) >= 0.4)
+                                                       if relevance(r["what"], terms) >= (0.3 if T["have"] in r["warnings"] else 0.4))
     coverage = [{"task": t["task"], "by": next((v for k, v in covered.items() if k and (k.lower() in t["task"].lower() or t["task"].lower() in k.lower())), [])}
                 for t in tasks]
     subs = []
