@@ -332,6 +332,8 @@ def main():
         if judge:
             if (j and float(j.get("score", 0)) < 4) or (not j and rel < 0.25):
                 continue                                           # the judge says (or relevance shows) it does not fit
+        elif rel < 0.2:
+            continue                                               # no judge today: relevance alone decides what fits
         uses = [b for b, on in (("local", c["kind"].startswith("local")), ("key", c["needs_key"]),
                                 ("middleman", c["middleman"])) if on and b in blockers]
         if uses and not c["have"]:
