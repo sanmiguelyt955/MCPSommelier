@@ -18,8 +18,9 @@ How it works
     ($ per call, credits, x402 crypto payments), official vendor or community, stars, last update.
  5. JUDGE (optional, Gemini): rates 0-10 how well each fits YOUR need and profile, with a reason in your language,
     and says which task of the need each connector covers.
- 6. SCORES 0-100 = relevance 35 + judge 20 + already-have 15 + trust 10 + setup 10 + freshness 5 + free 5 + verdicts;
-    paid ones lose 10 points and go to their own section (they work, but cost money).
+ 6. SCORES 0-100 = relevance 35 + judge 20 + already-have 15 + trust 10 + setup 10 + freshness 10 + verdicts.
+    Price never changes the score (the best connector may cost $1): paid ones keep their real score and are only
+    MOVED to their own section, with the price when the listing says it.
  6b. For each job with no connector, and for blocked connectors, it looks for SUBSTITUTES: GitHub repos that do the
     same job (a library, CLI or app the agent can run). Legitimate substitutes only.
  7. RETURNS the ranking, tiers (Use now / Add it / Look later), warnings, blocked ones with a legitimate plan B,
@@ -59,19 +60,19 @@ L = {
             cols="| # | Connector | Score | Tier | Kind | Setup | What it does | Judge | Warnings |", cand="candidates",
             cov="Coverage of your need", nocov="no connector found yet", blocked="⛔ Not usable where you are TODAY",
             planb="🔁 Plan B (allowed ways only)", best="Best", besthave="Best one you already have", bestnew="Best new free one",
-            paid="💳 Paid (they work, but cost money: -10 points)", subs="🧩 Substitutes for what has no connector (repos that do the same job)",
+            paid="💳 Paid (same score, listed apart so you decide if the price is worth it)", subs="🧩 Substitutes for what has no connector (repos that do the same job)",
             sub_for="substitute repo for"),
  "es": dict(title="Mejores conectores para", tiers=("Usar ya", "Agregarlo", "Ver después"), have="✅ ya lo tienes",
             cols="| # | Conector | Puntos | Nivel | Tipo | Instalación | Qué hace | Juez | Avisos |", cand="candidatos",
             cov="Qué partes de tu necesidad quedan cubiertas", nocov="todavía sin conector", blocked="⛔ No sirven donde estás HOY",
             planb="🔁 Plan B (solo caminos permitidos)", best="El mejor", besthave="El mejor que ya tienes", bestnew="El mejor nuevo y gratis",
-            paid="💳 De paga (funcionan, pero cuestan dinero: -10 puntos)", subs="🧩 Sustitutos para lo que no tiene conector (repos que hacen lo mismo)",
+            paid="💳 De paga (misma calificación; aparte para que tú decidas si vale el precio)", subs="🧩 Sustitutos para lo que no tiene conector (repos que hacen lo mismo)",
             sub_for="repo sustituto para"),
  "pt": dict(title="Melhores conectores para", tiers=("Usar já", "Adicionar", "Ver depois"), have="✅ você já tem",
             cols="| # | Conector | Pontos | Nível | Tipo | Instalação | O que faz | Juiz | Avisos |", cand="candidatos",
             cov="Cobertura da sua necessidade", nocov="ainda sem conector", blocked="⛔ Não servem onde você está HOJE",
             planb="🔁 Plano B (só caminhos permitidos)", best="O melhor", besthave="O melhor que você já tem", bestnew="O melhor novo e grátis",
-            paid="💳 Pagos (funcionam, mas custam dinheiro: -10 pontos)", subs="🧩 Substitutos para o que não tem conector (repos que fazem o mesmo)",
+            paid="💳 Pagos (mesma nota; à parte para você decidir se vale o preço)", subs="🧩 Substitutos para o que não tem conector (repos que fazem o mesmo)",
             sub_for="repo substituto para"),
 }
 
@@ -131,7 +132,8 @@ def plan(need):
     g = gemini_json("Split this need (any language) into the separate jobs it involves and the MCP-connector search keywords for "
                     "each. Keywords: 1-2 lowercase English words, product or service names when obvious (gmail, shopify, canva, "
                     "tiktok, drive...). Return JSON {\"lang\": ISO 639-1 code of the need, \"tasks\": [{\"task\": short phrase in "
-                    "the need's language, \"keywords\": [2-4 strings]}]} with 1-5 tasks. Need: " + need)
+                    "the need's language, \"keywords\": [2-4 strings], \"ai_can_do\": true if an AI assistant does this job by itself with no "
+                    "external service (summarize, write, translate, decide, plan, explain)}]} with 1-5 tasks. Need: " + need)
     if g and g.get("tasks"):
         return g["tasks"], g.get("lang"), "gemini"
     base = words(need)
@@ -166,7 +168,7 @@ def github_mcp_search(keyword):
     return json.loads(r.stdout).get("items", []) if r.returncode == 0 else []
 
 
-def substitute_repos(keywords, exclude=(), n=3):
+def substitute_repos(keywords, exclude=(), n=3, must=()):
     """GitHub repos that do the same JOB without being a connector (a library, CLI or app the agent can run).
     Legitimate substitutes only: never tools made to get around a service's rules."""
     seen, out = set(exclude), []
@@ -177,6 +179,10 @@ def substitute_repos(keywords, exclude=(), n=3):
             n_ = x["full_name"]
             if n_ in seen or x.get("archived") or x.get("fork") or "awesome" in n_.lower() or days_since(x["pushed_at"]) > 540:
                 continue
+            hay = (n_ + " " + (x.get("description") or "") + " " + " ".join(x.get("topics") or [])).lower()
+            core = (n_ + " " + " ".join(x.get("topics") or [])).lower()
+            if must and (sum(1 for m in set(must) if m in hay) < min(2, len(set(must))) or not any(m in core for m in must)):
+                continue                                       # a substitute must be about the same job
             seen.add(n_)
             lic = ((x.get("license") or {}).get("spdx_id") or "none").lower()
             out.append({"repo": n_, "url": x["html_url"], "stars": x["stargazers_count"], "license": lic,
@@ -207,6 +213,14 @@ def describe_registry(s):
     middleman = any("smithery" in (r.get("url") or "") for r in remotes)
     return {"kind": kind, "needs_key": needs_key, "cost": cost, "middleman": middleman, "text": text,
             "repo": (s.get("repository") or {}).get("url", ""), "updated_days": days_since(s.get("_updated", ""))}
+
+
+PRICE_RE = re.compile(r"(\$\s?\d+(?:[.,]\d+)?(?:\s?(?:/|per)\s?(?:call|request|month|mo|image|video|minute|min|1k|1000)\w*)?)", re.I)
+
+
+def price_of(text):
+    m = PRICE_RE.search(text or "")
+    return m.group(1).replace(" ", "") if m else None
 
 
 def official_vendor(name, repo):
@@ -255,7 +269,8 @@ def main():
     tasks, glang, origin = plan(a.need)
     lang = (a.lang or glang or guess_lang(a.need))[:2].lower()
     T = L.get(lang, L["en"])
-    keywords = list(dict.fromkeys(k.lower() for t in tasks for k in t.get("keywords", [])))[:10]
+    keywords = list(dict.fromkeys(k.lower() for t in tasks if not t.get("ai_can_do") for k in t.get("keywords", [])))[:10] \
+        or list(dict.fromkeys(k.lower() for t in tasks for k in t.get("keywords", [])))[:10]
     terms = list(dict.fromkeys(words(a.need + " " + " ".join(keywords))))
     print(f"Tasks ({origin}): {[t['task'] for t in tasks]} · keywords: {keywords}", file=sys.stderr)
 
@@ -314,18 +329,21 @@ def main():
     for c in pre:
         rel, trust, setup, fresh = base_score(c)
         j = judge.get(c["name"])
-        if j and float(j.get("score", 0)) <= 1 and not c["have"]:
-            continue                                               # the judge says it has nothing to do with the need
+        if judge:
+            if (j and float(j.get("score", 0)) < 4) or (not j and rel < 0.25):
+                continue                                           # the judge says (or relevance shows) it does not fit
         uses = [b for b, on in (("local", c["kind"].startswith("local")), ("key", c["needs_key"]),
                                 ("middleman", c["middleman"])) if on and b in blockers]
         if uses and not c["have"]:
-            blocked.append({**{k: c[k] for k in ("name", "title", "url")}, "uses": sorted(set(uses))}); continue
+            bp = (35 * rel + 20 * ((float(j["score"]) / 10) if j else rel) + 10 * trust + 10 * setup + 10 * fresh)
+            blocked.append({**{k: c[k] for k in ("name", "title", "url")}, "uses": sorted(set(uses)), "score": max(0, min(100, round(bp)))}); continue
         pts = (35 * rel + 20 * ((float(j["score"]) / 10) if j else rel) + (15 if c["have"] else 0) + 10 * trust + 10 * setup
-               + 5 * fresh + (-10 if c["cost"] else 5) + index["verdicts"].get(c["name"], {}).get("shift", 0))
+               + 10 * fresh + index["verdicts"].get(c["name"], {}).get("shift", 0))
         pts = max(0, min(100, round(pts)))
         w = []
         if c["have"]: w.append(T["have"])
-        if c["cost"]: w.append("💳 cost")
+        if c["cost"]:
+            pr = price_of(c["text"]); w.append(f"💳 {pr}" if pr else "💳 cost")
         if c["needs_key"]: w.append("🔑 key/login")
         if c["middleman"]: w.append("↪ via a third-party host")
         if c["vendor"] and not c["have"]: w.append("🏢 official vendor")
@@ -346,13 +364,18 @@ def main():
                 for t in tasks]
     subs = []
     for c, t in zip(coverage, tasks):
+        if t.get("ai_can_do"):
+            c["ai"] = True
+            continue
         if not c["by"]:
-            found = substitute_repos(t.get("keywords", []) or words(t["task"]))
+            kw = t.get("keywords", []) or words(t["task"])
+            found = substitute_repos(kw, must=[w for k in kw for w in words(k) if len(w) >= 4])
             subs.append({"task": t["task"], "repos": found})
             c["substitutes"] = [x["repo"] for x in found]
     picks = {"best": rows[0]["name"] if rows else None,
              "best_you_have": next((r["name"] for r in rows if r["have"]), None),
-             "best_new_free": next((r["name"] for r in rows if not r["have"] and "💳 cost" not in r["warnings"]), None)}
+             "best_new_free": next((r["name"] for r in rows if not r["have"] and not r["paid"]), None),
+             "best_paid": paid_rows[0]["name"] if paid_rows else None}
     HOW = {"en": {"paid": "look for the vendor's free tier or a free local alternative",
                   "local": "run it on your own computer, or pick a hosted connector for the same service",
                   "key": "create the key in the service and connect it in your app's connector settings (never paste it in a chat)",
@@ -366,10 +389,11 @@ def main():
                   "key": "crie a chave no serviço e conecte nas configurações de conectores do seu app (nunca cole em um chat)",
                   "middleman": "prefira o conector oficial do serviço em vez de um hospedado por terceiros"}}
     plan_b = []
-    for b in blocked[:6]:
-        kw = [w for w in words(b["title"]) if w not in ("mcp", "server")][:2]
+    task_kw = [w for k in keywords for w in words(k) if len(w) >= 4]
+    for b in sorted(blocked, key=lambda x: -x["score"])[:5]:
+        kw = [w for w in words(b["title"]) if w not in ("mcp", "server", "agent", "claude")][:2]
         plan_b.append({"name": b["name"], "how": HOW.get(lang, HOW["en"]).get(b["uses"][0], "-"),
-                       "substitutes": substitute_repos([" ".join(kw)] if kw else [], n=2) if kw else []})
+                       "substitutes": substitute_repos([" ".join(kw)], exclude=(b["name"],), n=2, must=task_kw) if kw else []})
     index["searches"].append({"date": f"{datetime.now():%Y-%m-%d %H:%M}", "need": a.need, "tasks": [t["task"] for t in tasks],
                               "top": [r["name"] for r in rows[:5]], "picks": picks})
     INDEX.write_text(json.dumps(index, ensure_ascii=False, indent=1))
@@ -392,13 +416,13 @@ def main():
             jj = f"{float(r['judge']['score']):.0f}/10 {r['judge'].get('reason', '')}" if r["judge"] else ""
             out.append(f"| {i} | {name} | {r['score']} | {r['tier']} | {r['kind']} | {r['setup']} | "
                        f"{r['what'].replace('|', '/')} | {jj.replace('|', '/')} | {' '.join(r['warnings'])} |")
-    out += ["", f"## {T['cov']}"] + [f"- **{c['task']}** → {', '.join(c['by']) if c['by'] else T['nocov'] + (' · 🧩 ' + ', '.join(c.get('substitutes', [])) if c.get('substitutes') else '')}" for c in coverage]
+    out += ["", f"## {T['cov']}"] + [f"- **{c['task']}** → {('🤖 ' + {'es': 'lo hace la IA, no necesita conector', 'pt': 'a IA faz isso, não precisa de conector'}.get(lang, 'the AI does this itself, no connector needed')) if c.get('ai') else ', '.join(c['by']) if c['by'] else T['nocov'] + (' · 🧩 ' + ', '.join(c.get('substitutes', [])) if c.get('substitutes') else '')}" for c in coverage]
     if subs:
         out += ["", f"## {T['subs']}"]
         for sb in subs:
             out += [f"- **{sb['task']}** → [{x['repo']}]({x['url']}) ({x['stars']}⭐, {x['license']}) — {x['description'].replace('|', '/')}" for x in sb["repos"]] or [f"- **{sb['task']}** → —"]
     if blocked:
-        out += ["", f"## {T['blocked']}"] + [f"- [{b['title']}]({b['url']}) — {', '.join(b['uses'])}" if b["url"] else f"- {b['title']} — {', '.join(b['uses'])}" for b in blocked]
+        out += ["", f"## {T['blocked']}"] + [f"- [{b['title']}]({b['url']}) ({b['score']}) — {', '.join(b['uses'])}" if b["url"] else f"- {b['title']} ({b['score']}) — {', '.join(b['uses'])}" for b in sorted(blocked, key=lambda x: -x['score'])]
         out += ["", f"## {T['planb']}"]
         for pb in plan_b:
             alt = "; ".join(f"[{x['repo']}]({x['url']}) ({x['stars']}⭐)" for x in pb["substitutes"])

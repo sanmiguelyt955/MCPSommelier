@@ -19,7 +19,7 @@ python3 mcpsommelier.py "mandar facturas por correo" --free
 7. Los que no sirven donde estás salen aparte, con un **plan B legítimo**.
 
 ## De paga y sustitutos
-- **Los de paga no se esconden:** salen en su propia sección, «💳 De paga (funcionan, pero cuestan dinero)», con 10 puntos menos.
+- **El precio nunca baja la calificación:** el mejor del mercado puede costar 1 dólar. Los de paga conservan su calificación real y solo se **mueven** a su propia sección, «💳 De paga», con el precio cuando lo dice, para que tú decidas.
 - Una tarea solo cuenta como cubierta si el juez le da 6/10 o más a un conector para esa tarea.
 - **Sustitutos:** para cada tarea sin conector (y para los apartados), busca **repos de GitHub que hagan lo mismo** (una librería, programa o app que el agente pueda correr). Solo sustitutos legítimos: revisa la licencia y las reglas del servicio.
 

@@ -28,11 +28,11 @@ python3 mcpsommelier.py --verdict io.github.owner/server good "worked great"
 3. **Searches** the official [MCP Registry](https://registry.modelcontextprotocol.io) and GitHub.
 4. **Checks** each one: hosted (remote URL) or local package, key/login needed, signs of cost ($ per call, credits, x402), official vendor or community, stars, last update.
 5. **Judge** (optional, Gemini): 0-10 fit for your need and profile, which job it covers, and a reason in your language.
-6. **Scores** 0-100 = relevance 35 + judge 20 + already-have 15 + trust 10 + setup 10 + freshness 5 + free 5 + your verdicts.
+6. **Scores** 0-100 = relevance 35 + judge 20 + already-have 15 + trust 10 + setup 10 + freshness 10 + your verdicts. Price never changes the score.
 7. **Returns** tiers (**Use now** · **Add it** · **Look later**), warnings (✅ you have it, 💳 cost, 🔑 key/login, ↪ third-party host, 🏢 official vendor), coverage of your need, and blocked ones with a plan B.
 
 ## Paid connectors and substitutes
-- **Paid ones are not hidden**: they go to their own section, *"💳 Paid (they work, but cost money)"*, and lose 10 points.
+- **Price never lowers a score**: the best connector on the market may cost $1. Paid ones keep their real score and are only **moved** to their own section, *"💳 Paid"*, with the price when the listing says it, so you decide.
 - **Coverage**: a job counts as covered only when the judge rates a connector 6/10 or more for it.
 - **Substitutes**: for every job with no connector (and for blocked connectors), it looks for **GitHub repos that do the
   same job** — a library, CLI or app the agent can run. Legitimate substitutes only; check each one's license and the
