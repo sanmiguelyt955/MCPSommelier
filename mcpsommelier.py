@@ -173,6 +173,11 @@ def github_mcp_search(keyword):
     return json.loads(r.stdout).get("items", []) if r.returncode == 0 else []
 
 
+BLOCKER_WORDS = {"yt-dlp": ("yt-dlp", "youtube-dl", "yt_dlp", "downloader", "download videos"), "gpu": ("cuda", "requires a gpu"),
+                 "local": (), "key": (), "middleman": ()}
+AVOID = ()
+
+
 def substitute_repos(keywords, exclude=(), n=3, must=()):
     """GitHub repos that do the same JOB without being a connector (a library, CLI or app the agent can run).
     Legitimate substitutes only: never tools made to get around a service's rules."""
@@ -185,6 +190,8 @@ def substitute_repos(keywords, exclude=(), n=3, must=()):
             if n_ in seen or x.get("archived") or x.get("fork") or "awesome" in n_.lower() or days_since(x["pushed_at"]) > 540:
                 continue
             hay = (n_ + " " + (x.get("description") or "") + " " + " ".join(x.get("topics") or [])).lower()
+            if any(w in hay for w in AVOID) or any(w in hay for w in BYPASS_WORDS):
+                continue                                       # would need something blocked here, or evades protections
             core = (n_ + " " + " ".join(x.get("topics") or [])).lower()
             if must and (sum(1 for m in set(must) if m in hay) < min(2, len(set(must))) or not any(m in core for m in must)):
                 continue                                       # a substitute must be about the same job
@@ -272,7 +279,9 @@ def main():
     inv = load(a.inventory, {"connectors": []}).get("connectors", [])
     prof = load(a.profile, {})
     blockers = set(b.lower() for b in a.blockers) | set(prof.get("blockers", []))
-    if a.where == "cloud": blockers.add("local")
+    if a.where == "cloud": blockers |= {"local", "yt-dlp"}
+    global AVOID
+    AVOID = tuple(w for b in blockers for w in BLOCKER_WORDS.get(b, ()))
     tasks, glang, origin = plan(a.need)
     lang = (a.lang or glang or guess_lang(a.need))[:2].lower()
     T = L.get(lang, L["en"])
@@ -371,6 +380,9 @@ def main():
         job = (r["judge"] or {}).get("job")
         if job and float((r["judge"] or {}).get("score", 0)) >= 6:      # only a real fit covers a job
             covered.setdefault(job, []).append(r["title"])
+    if not judge and len(tasks) == 1:
+        covered.setdefault(tasks[0]["task"], []).extend(r["title"] for r in rows + paid_rows
+                                                       if relevance(r["what"], terms) >= 0.4)
     coverage = [{"task": t["task"], "by": next((v for k, v in covered.items() if k and (k.lower() in t["task"].lower() or t["task"].lower() in k.lower())), [])}
                 for t in tasks]
     subs = []
