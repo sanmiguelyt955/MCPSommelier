@@ -1,0 +1,5 @@
+data/*
+!data/inventory.example.json
+!data/profile.example.json
+__pycache__/
+*.pyc

@@ -1,0 +1,5 @@
+{"connectors": [
+ {"name": "Gmail", "description": "Search, read, draft, send and label email", "tools": ["send_message", "create_draft", "search_threads"]},
+ {"name": "Google Drive", "description": "Search, read, create and share files", "tools": ["search_files", "create_file"]},
+ {"name": "An AI video generator", "description": "Generate videos from text or images", "tools": ["generate_video"], "cost": true}
+]}

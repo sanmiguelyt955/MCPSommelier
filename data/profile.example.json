@@ -1,0 +1,5 @@
+{
+ "who": "Describe yourself or your agent in one line (what you do)",
+ "rules": ["prefer what I already have", "free or almost free", "official connectors over third-party copies"],
+ "blockers": []
+}
