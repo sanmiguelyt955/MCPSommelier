@@ -224,7 +224,9 @@ def describe_registry(s):
     cost = any(w in text.lower() for w in COST_WORDS)
     middleman = any("smithery" in (r.get("url") or "") for r in remotes)
     return {"kind": kind, "needs_key": needs_key, "cost": cost, "middleman": middleman, "text": text,
-            "repo": (s.get("repository") or {}).get("url", ""), "updated_days": days_since(s.get("_updated", ""))}
+            "repo": (s.get("repository") or {}).get("url", ""), "updated_days": days_since(s.get("_updated", "")),
+            "endpoint": next((r.get("url") for r in remotes if r.get("url")), ""),
+            "packages": [{"type": p.get("registryType"), "id": p.get("identifier")} for p in pkgs if p.get("identifier")]}
 
 
 PRICE_RE = re.compile(r"(\$\s?\d+(?:[.,]\d+)?(?:\s?(?:/|per)\s?(?:call|request|month|mo|image|video|minute|min|1k|1000)\w*)?)", re.I)
@@ -264,6 +266,9 @@ def substitute_skills(task, top=3):
     except Exception:  # noqa: BLE001
         return []
 
+FAIR = False   # --fair: the connectors you have get no bonus (they only keep the ✅ mark)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("need", nargs="?", help="what you want to do, in any language")
@@ -279,7 +284,10 @@ def main():
     ap.add_argument("--md")
     ap.add_argument("--verdict", nargs="+", metavar=("NAME", "good|bad"))
     ap.add_argument("--history", action="store_true")
+    ap.add_argument("--fair", action="store_true", help="no bonus for connectors you already have: the best one wins, yours only keep the ✅ mark")
     a = ap.parse_args()
+    global FAIR
+    FAIR = a.fair
     DATA.mkdir(parents=True, exist_ok=True)
     index = load(INDEX, {"searches": [], "verdicts": {}})
     if a.verdict:
@@ -333,13 +341,14 @@ def main():
 
     def base_score(c):
         rel = relevance(c["text"], terms)
-        trust = 1.0 if c["have"] else 0.8 if c["vendor"] else min(0.7, math.log10(c["stars"] + 1) / 4) + (0.1 if c["source"] == "registry" else 0)
-        setup = 1.0 if c["have"] else 0.8 if c["kind"] == "hosted" else 0.5
+        mine = c["have"] and not FAIR
+        trust = 1.0 if mine else 0.8 if c["vendor"] else min(0.7, math.log10(c["stars"] + 1) / 4) + (0.1 if c["source"] == "registry" else 0)
+        setup = 1.0 if mine else 0.8 if c["kind"] in ("hosted", "connected") else 0.5
         setup -= 0.2 if c["needs_key"] else 0
         fresh = max(0, 1 - c["updated_days"] / 365)
         return rel, trust, setup, fresh
 
-    pre = sorted(cands.values(), key=lambda c: -(35 * base_score(c)[0] + (15 if c["have"] else 0) + 10 * base_score(c)[1]))[:30]
+    pre = sorted(cands.values(), key=lambda c: -(35 * base_score(c)[0] + (15 if c["have"] and not FAIR else 0) + 10 * base_score(c)[1]))[:30]
     judge = {}
     if not a.no_judge and pre:
         g = gemini_json("You choose MCP connectors for ONE person. Need: «" + a.need + "». Jobs in the need: " + json.dumps([t["task"] for t in tasks], ensure_ascii=False)
@@ -371,7 +380,7 @@ def main():
         if uses and not c["have"]:
             bp = (35 * rel + 20 * ((float(j["score"]) / 10) if j else rel) + 10 * trust + 10 * setup + 10 * fresh)
             blocked.append({**{k: c[k] for k in ("name", "title", "url")}, "uses": sorted(set(uses)), "score": max(0, min(100, round(bp)))}); continue
-        pts = (35 * rel + 20 * ((float(j["score"]) / 10) if j else rel) + (15 if c["have"] else 0) + 10 * trust + 10 * setup
+        pts = (35 * rel + 20 * ((float(j["score"]) / 10) if j else rel) + (15 if c["have"] and not FAIR else 0) + 10 * trust + 10 * setup
                + 10 * fresh + index["verdicts"].get(c["name"], {}).get("shift", 0))
         pts = max(0, min(100, round(pts)))
         w = []
@@ -385,7 +394,8 @@ def main():
         rows.append({"name": c["name"], "title": c["title"], "url": c["url"], "score": pts, "have": c["have"],
                      "tier": T["tiers"][0] if (c["have"] and pts >= 50) or pts >= 70 else T["tiers"][1] if pts >= 50 else T["tiers"][2],
                      "kind": c["kind"], "setup": "0" if c["have"] else ("key" if c["needs_key"] else "easy" if c["kind"] == "hosted" else "install"),
-                     "what": re.sub(r"\s+", " ", c["text"])[:140], "judge": j, "warnings": w, "source": c["source"], "paid": c["cost"]})
+                     "what": re.sub(r"\s+", " ", c["text"])[:140], "judge": j, "warnings": w, "source": c["source"], "paid": c["cost"],
+                     "endpoint": c.get("endpoint", ""), "packages": c.get("packages", []), "repo_url": c.get("repo", "")})
     rows.sort(key=lambda x: -x["score"])
     paid_rows = [r for r in rows if r["paid"]][:a.top]
     rows = [r for r in rows if not r["paid"]][:a.top]
