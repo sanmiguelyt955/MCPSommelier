@@ -250,6 +250,20 @@ def relevance(text, terms):
     return sum(1 for x in terms if x in t or stem(x) in st or any(x in w for w in t)) / max(1, len(terms))
 
 
+
+SKILLSOMMELIER = Path(__file__).resolve().parent.parent / "skillsommelier" / "skillsommelier.py"
+
+def substitute_skills(task, top=3):
+    """Agent Skills for a job with no connector (SkillSommelier, when it sits next to this repo)."""
+    if not SKILLSOMMELIER.exists():
+        return []
+    try:
+        r = subprocess.run([sys.executable, str(SKILLSOMMELIER), task, "--json", "--no-family", "--no-judge", "--top", str(top)],
+                           capture_output=True, text=True, timeout=600)
+        return [f"{x['repo']}/{x['skill']}" for x in json.loads(r.stdout).get("results", [])[:top]]
+    except Exception:  # noqa: BLE001
+        return []
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("need", nargs="?", help="what you want to do, in any language")
@@ -389,12 +403,16 @@ def main():
     for c, t in zip(coverage, tasks):
         if t.get("ai_can_do"):
             c["ai"] = True
+            if "_need_skills" not in locals():
+                _need_skills = substitute_skills(a.need)      # a skill teaches the AI to do it better (one search per need)
+            c["skills"] = _need_skills
             continue
         if not c["by"]:
             kw = t.get("keywords", []) or words(t["task"])
             found = substitute_repos(kw, must=[w for k in kw for w in words(k) if len(w) >= 4])
             subs.append({"task": t["task"], "repos": found})
             c["substitutes"] = [x["repo"] for x in found]
+            c["skills"] = substitute_skills(t["task"])        # connector → repo AND skill (SkillSommelier)
     picks = {"best": rows[0]["name"] if rows else None,
              "best_you_have": next((r["name"] for r in rows if r["have"]), None),
              "best_new_free": next((r["name"] for r in rows if not r["have"] and not r["paid"]), None),
@@ -443,7 +461,7 @@ def main():
             jj = f"{float(r['judge']['score']):.0f}/10 {r['judge'].get('reason', '')}" if r["judge"] else ""
             out.append(f"| {i} | {name} | {r['score']} | {r['tier']} | {r['kind']} | {r['setup']} | "
                        f"{r['what'].replace('|', '/')} | {jj.replace('|', '/')} | {' '.join(r['warnings'])} |")
-    out += ["", f"## {T['cov']}"] + [f"- **{c['task']}** → {('🤖 ' + {'es': 'lo hace la IA, no necesita conector', 'pt': 'a IA faz isso, não precisa de conector'}.get(lang, 'the AI does this itself, no connector needed')) if c.get('ai') else ', '.join(c['by']) if c['by'] else T['nocov'] + (' · 🧩 ' + ', '.join(c.get('substitutes', [])) if c.get('substitutes') else '')}" for c in coverage]
+    out += ["", f"## {T['cov']}"] + [f"- **{c['task']}** → {('🤖 ' + {'es': 'lo hace la IA, no necesita conector', 'pt': 'a IA faz isso, não precisa de conector'}.get(lang, 'the AI does this itself, no connector needed') + (' · 🎓 ' + ', '.join(c.get('skills', [])) if c.get('skills') else '')) if c.get('ai') else ', '.join(c['by']) if c['by'] else T['nocov'] + (' · 🧩 ' + ', '.join(c.get('substitutes', [])) if c.get('substitutes') else '') + (' · 🎓 ' + ', '.join(c.get('skills', [])) if c.get('skills') else '')}" for c in coverage]
     if subs:
         out += ["", f"## {T['subs']}"]
         for sb in subs:
