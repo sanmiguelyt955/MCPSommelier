@@ -24,3 +24,11 @@ python3 mcpsommelier.py "mandar facturas por correo" --free
 - **Sustitutos:** para cada tarea sin conector (y para los apartados), busca **repos de GitHub que hagan lo mismo** (una librería, programa o app que el agente pueda correr). Solo sustitutos legítimos: revisa la licencia y las reglas del servicio.
 
 **Seguridad:** solo lee. Nunca instala, conecta ni autoriza nada. Las claves se conectan en tu app, nunca en un chat.
+
+## 🧰 Kit para una meta (los tres buscadores juntos)
+`kit.py` convierte una meta en un kit completo: la parte en pasos y en cada paso da **solo lo que hace falta**
+(📦 repo, 🔌 conector, 🎓 skill o 🤖 nada si la IA lo hace sola). Respeta tus condiciones: **gratis** y **para monetizar**
+(marca ⛔ las licencias no comerciales).
+```bash
+python3 kit.py "quiero hacer videos animados gratis con IA y publicarlos en YouTube para monetizarlos" --where cloud
+```

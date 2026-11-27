@@ -51,3 +51,13 @@ Read-only: it never installs, connects or authorizes a connector. Connect keys i
 
 ## License
 MIT © 2026 sanmiguelyt955
+
+## 🧰 Kit for a goal (the three finders together)
+`kit.py` (same file in RepoSommelier, MCPSommelier and SkillSommelier) turns a goal into a complete kit:
+it splits the goal into steps and, for each step, gives **only what it needs**: 📦 repo, 🔌 connector, 🎓 skill —
+or 🤖 nothing when the AI does it alone. It respects your conditions: **free** (paid things go to an optional line) and
+**to monetize** (non-commercial licenses are flagged ⛔).
+```bash
+python3 kit.py "I want to make animated videos for free with AI and publish them on YouTube to monetize them" --where cloud
+```
+Needs the three repos side by side (../reposommelier, ../mcpsommelier, ../skillsommelier).
